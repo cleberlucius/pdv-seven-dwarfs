@@ -7,7 +7,7 @@ import os
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Seven Dwarfs - PDV", layout="wide")
 
-# --- FUNÇÃO PARA GERAR A FICHA (ESTÁVEL) ---
+# --- FUNÇÃO PARA GERAR A FICHA ---
 def gerar_ficha_imagem(sabor, id_venda, pagto):
     img = Image.new('RGB', (300, 900), color=(255, 255, 255))
     d = ImageDraw.Draw(img)
@@ -33,7 +33,6 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
         except: return ImageFont.load_default()
 
     f_sabor = get_font(95); f_info = get_font(24); f_peq = get_font(16)
-    
     d.line([(10, y), (290, y)], fill=(0,0,0), width=6)
     y += 100 
     d.text((150, y), sabor.upper(), fill=(0,0,0), font=f_sabor, anchor="ms")
@@ -58,6 +57,7 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
 
 # --- INICIALIZAÇÃO DE ESTADOS ---
 if 'vendas' not in st.session_state: st.session_state.vendas = []
+if 'sangrias' not in st.session_state: st.session_state.sangrias = []
 if 'caixa_inicial' not in st.session_state: st.session_state.caixa_inicial = 0.0
 if 'cardapio' not in st.session_state: st.session_state.cardapio = {}
 if 'configurado' not in st.session_state: st.session_state.configurado = False
@@ -68,18 +68,23 @@ if 'show_desconto' not in st.session_state: st.session_state.show_desconto = Fal
 
 st.markdown("""<style>div.stButton > button { height: 5em; font-size: 16px; font-weight: bold; border-radius: 10px; margin-bottom: 5px; white-space: pre-wrap; }</style>""", unsafe_allow_html=True)
 
-# --- TELA 1: CONFIGURAÇÃO ---
+# --- TELA 1: CONFIGURAÇÃO (MODAL DE EDIÇÃO E ABERTURA) ---
 if not st.session_state.configurado:
-    st.title("🚀 Abertura Seven Dwarfs")
-    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=None, placeholder="0.00")
-    st.divider()
-    opcoes = ["Pilsen", "IPA", "Vinho", "Weiss", "Black", "Água", "Refrigerante"]
-    selec = st.multiselect("Sabores de Hoje:", opcoes, default=["Pilsen", "IPA"])
-    temp_card = {}
-    for s in selec: 
-        temp_card[s] = st.number_input(f"Preço {s}:", min_value=0.0, format="%.2f", key=f"p_{s}", value=None, placeholder="0.00")
+    st.title("🚀 Configuração Seven Dwarfs")
+    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial if st.session_state.caixa_inicial > 0 else None, placeholder="0.00")
     
-    if st.button("ABRIR CAIXA E INICIAR", type="primary", use_container_width=True):
+    st.divider()
+    opcoes_disponiveis = ["Pilsen", "IPA", "Vinho", "Weiss", "Black", "Água", "Refrigerante"]
+    # Garante que os sabores já configurados estejam selecionados ao editar
+    selec = st.multiselect("Sabores Ativos:", opcoes_disponiveis, default=list(st.session_state.cardapio.keys()) if st.session_state.cardapio else ["Pilsen", "IPA"])
+    
+    temp_card = {}
+    for s in selec:
+        # Recupera o preço anterior se existir, senão inicia vazio
+        preco_anterior = st.session_state.cardapio.get(s, None)
+        temp_card[s] = st.number_input(f"Preço {s}:", min_value=0.0, format="%.2f", key=f"p_{s}", value=preco_anterior, placeholder="0.00")
+    
+    if st.button("SALVAR E IR PARA VENDAS", type="primary", use_container_width=True):
         if selec:
             st.session_state.caixa_inicial = v_ini if v_ini else 0.0
             st.session_state.cardapio = {k: (v if v else 0.0) for k, v in temp_card.items()}
@@ -88,8 +93,8 @@ if not st.session_state.configurado:
         else: st.error("Selecione ao menos um sabor.")
     st.stop()
 
-# --- TELA 2: PDV ---
-st.markdown("### 🍻 SEVEN DWARFS BEER")
+# --- TELA PRINCIPAL ---
+st.markdown("### 🍻 SEVEN DWARFS BEER | PDV")
 t1, t2, t3 = st.tabs(["🛒 VENDER", "🔄 ESTORNO", "📊 FECHAMENTO"])
 
 with t1:
@@ -149,7 +154,7 @@ with t1:
                 st.session_state.fichas_pendentes = []
 
 with t2:
-    st.write("### 🔄 Estorno por Item")
+    st.write("### 🔄 Estorno")
     if not st.session_state.vendas: st.info("Sem vendas.")
     else:
         df_v = pd.DataFrame(st.session_state.vendas)
@@ -157,25 +162,47 @@ with t2:
         itens_venda = [v for v in st.session_state.vendas if v['id_venda'] == v_sel]
         remover = []
         for idx, item in enumerate(itens_venda):
-            if st.checkbox(f"{item['Sabor']} - R$ {item['Valor']:.2f}", key=f"est_{v_sel}_{idx}"):
-                remover.append(item)
-        if remover and st.button("CONFIRMAR ESTORNO SELECIONADO"):
+            if st.checkbox(f"{item['Sabor']} - R$ {item['Valor']:.2f}", key=f"est_{v_sel}_{idx}"): remover.append(item)
+        if remover and st.button("CONFIRMAR ESTORNO"):
             for r in remover: st.session_state.vendas.remove(r)
             st.rerun()
 
 with t3:
-    if st.session_state.vendas:
-        df_f = pd.DataFrame(st.session_state.vendas)
-        def soma(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("PIX", f"R$ {soma('PIX'):.2f}")
-        c2.metric("DÉBITO", f"R$ {soma('Débito'):.2f}")
-        c3.metric("CRÉDITO", f"R$ {soma('Crédito'):.2f}")
-        c4.metric("DINHEIRO", f"R$ {(st.session_state.caixa_inicial + soma('Dinheiro')):.2f}")
-        c5.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
-        st.divider()
-        st.write("#### Por Sabor")
-        st.table(df_f.groupby('Sabor').size().reset_index(name='Qtd'))
-    if st.button("LIMPAR TUDO"):
-        for k in list(st.session_state.keys()): del st.session_state[k]
-        st.rerun()
+    st.write("### 📊 Fechamento e Sangria")
+    df_f = pd.DataFrame(st.session_state.vendas) if st.session_state.vendas else pd.DataFrame(columns=['Tipo', 'Valor', 'Sabor'])
+    
+    def soma(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
+    total_sangrias = sum(s['valor'] for s in st.session_state.sangrias)
+    dinheiro_em_caixa = (st.session_state.caixa_inicial + soma('Dinheiro')) - total_sangrias
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("PIX", f"R$ {soma('PIX'):.2f}")
+    c2.metric("DÉBITO", f"R$ {soma('Débito'):.2f}")
+    c3.metric("CRÉDITO", f"R$ {soma('Crédito'):.2f}")
+    c4.metric("DINHEIRO GAVETA", f"R$ {dinheiro_em_caixa:.2f}", help="Troco inicial + Vendas Dinheiro - Sangrias")
+    c5.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
+
+    st.divider()
+    
+    col_san1, col_san2 = st.columns(2)
+    with col_san1:
+        st.write("#### 💸 Realizar Sangria")
+        v_sangria = st.number_input("Valor da Sangria (R$):", min_value=0.0, format="%.2f", key="val_sangria")
+        motivo = st.text_input("Motivo (ex: gelo, almoço):", key="mot_sangria")
+        if st.button("CONFIRMAR SANGRIA"):
+            if v_sangria > 0:
+                st.session_state.sangrias.append({"valor": v_sangria, "motivo": motivo, "hora": datetime.now().strftime("%H:%M")})
+                st.success(f"Sangria de R$ {v_sangria:.2f} registrada!"); st.rerun()
+
+    with col_san2:
+        st.write("#### ⚙️ Gerenciar Evento")
+        if st.button("EDITAR CARDÁPIO / PREÇOS"):
+            st.session_state.configurado = False # Volta para a tela de configuração
+            st.rerun()
+        if st.button("LIMPAR TUDO / ZERAR EVENTO", type="secondary"):
+            for k in list(st.session_state.keys()): del st.session_state[k]
+            st.rerun()
+
+    if st.session_state.sangrias:
+        st.write("#### Histórico de Sangrias")
+        st.table(pd.DataFrame(st.session_state.sangrias))
