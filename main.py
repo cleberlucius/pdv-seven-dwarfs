@@ -26,12 +26,10 @@ if 'fichas_pendentes' not in st.session_state: st.session_state.fichas_pendentes
 
 # --- FUNÇÃO PARA GERAR A FICHA ---
 def gerar_ficha_imagem(sabor, id_venda, pagto):
-    # Dimensões da imagem (300px largura para térmica)
     img = Image.new('RGB', (300, 580), color=(255, 255, 255))
     d = ImageDraw.Draw(img)
     y_offset = 20
     
-    # 1. Tentar carregar a Logo
     try:
         logo = Image.open("logo.png").convert("L")
         largura_logo = 220
@@ -45,7 +43,6 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
         d.text((150, y_offset), "SEVEN DWARFS BEER", fill=(0,0,0), anchor="ms")
         y_offset += 40
 
-    # Fontes
     try:
         font_sabor = ImageFont.truetype("arialbd.ttf", 75)
         font_info = ImageFont.truetype("arialbd.ttf", 20)
@@ -53,16 +50,13 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     except:
         font_sabor = font_info = font_rodape = ImageFont.load_default()
 
-    # 2. Sabor
     d.line([(20, y_offset), (280, y_offset)], fill=(0,0,0), width=3)
     d.text((150, y_offset + 90), sabor.upper(), fill=(0,0,0), font=font_sabor, anchor="ms")
     d.line([(20, y_offset + 170), (280, y_offset + 170)], fill=(0,0,0), width=3)
 
-    # 3. Info de Controle
     d.text((30, y_offset + 200), f"ID Venda: {id_venda:04d}", fill=(0,0,0), font=font_info)
     d.text((30, y_offset + 235), f"PGTO: {pagto.upper()}", fill=(0,0,0), font=font_info)
 
-    # 4. Rodapé
     data_str = datetime.now().strftime("%d/%m/%Y - %H:%M")
     d.text((150, y_offset + 300), f"Emitido em: {data_str}", fill=(0,0,0), font=font_rodape, anchor="ms")
     d.text((150, y_offset + 330), "VALIDO APENAS PARA ESTE EVENTO", fill=(0,0,0), font=font_rodape, anchor="ms")
@@ -137,4 +131,40 @@ with t1:
 
     with col_i:
         st.write("### 🖨️ Fichas")
-        if st.session_state.
+        if st.session_state.fichas_pendentes:
+            if st.button("IMPRIMIR FICHAS", use_container_width=True):
+                for img in st.session_state.fichas_pendentes: st.image(img)
+                st.session_state.fichas_pendentes = []
+        else: st.write("Aguardando...")
+
+with t2: # Sangria
+    mot = st.text_input("Motivo Sangria:")
+    val_s = st.number_input("Valor (R$):", min_value=0.0)
+    if st.button("Confirmar Sangria"):
+        if mot and val_s > 0:
+            st.session_state.sangrias.append({"Hora": datetime.now().strftime("%H:%M"), "Motivo": mot, "Valor": val_s})
+            st.rerun()
+
+with t3: # Estorno
+    if not df_v.empty:
+        id_est = st.selectbox("ID da venda:", df_v['id'].unique())
+        if st.button("PROCESSAR ESTORNO", type="primary"):
+            item = df_v[df_v['id'] == id_est].iloc[0]
+            st.session_state.devolucoes.append({"Sabor": item['Sabor'], "Valor": item['Total'], "Tipo": item['Tipo']})
+            st.session_state.vendas = [v for v in st.session_state.vendas if v['id'] != id_est]
+            st.rerun()
+
+with t4: # Fechamento
+    df_s = pd.DataFrame(st.session_state.sangrias)
+    df_d = pd.DataFrame(st.session_state.devolucoes)
+    v_din = df_v[df_v['Tipo'] == 'Dinheiro']['Total'].sum() if not df_v.empty else 0
+    s_tot = df_s['Valor'].sum() if not df_s.empty else 0
+    d_din = df_d[df_d['Tipo'] == 'Dinheiro']['Valor'].sum() if not df_d.empty else 0
+    caixa_fisico = st.session_state.caixa_inicial + v_din - s_tot - d_din
+    st.metric("DINHEIRO EM MÃO", f"R$ {caixa_fisico:.2f}")
+    if not df_v.empty:
+        st.write("### Resumo por Sabor")
+        st.table(df_v.groupby('Sabor')['Qtd'].sum())
+    if st.button("ZERAR TUDO"):
+        for k in list(st.session_state.keys()): del st.session_state[k]
+        st.rerun()
