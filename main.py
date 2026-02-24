@@ -15,7 +15,6 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     img = Image.new('RGB', (largura, altura_estimada), color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
     
-    # Função de fonte modificada para suportar Bold ou Regular
     def get_font(size, bold=True):
         if bold:
             paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 
@@ -23,7 +22,6 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
         else:
             paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 
                      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
-        
         for path in paths:
             if os.path.exists(path): return ImageFont.truetype(path, size)
         return ImageFont.load_default()
@@ -38,7 +36,6 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
             y += logo.size[1] + 20
         except: y += 10
 
-    # Sabor (Mantido em Negrito)
     draw.line([(15, y), (285, y)], fill=(0,0,0), width=5)
     y += 50
     
@@ -57,7 +54,6 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     draw.line([(15, y), (285, y)], fill=(0,0,0), width=5)
     y += 50
 
-    # Infos de Venda (Mantido em Negrito para leitura rápida)
     f_info = get_font(24, bold=True)
     draw.text((largura/2, y), f"VENDA ID: {str(id_venda)[-5:]}", fill=(0,0,0), font=f_info, anchor="mm")
     y += 35
@@ -65,7 +61,7 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     
     y += 60 
 
-    # RODAPÉ: Sem negrito e fonte menor (14)
+    # RODAPÉ: Sem negrito e fonte menor
     f_rodape = get_font(14, bold=False)
     data_str = datetime.now().strftime("%d/%m/%Y - %H:%M")
     
@@ -77,7 +73,7 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     ]
 
     for msg in mensagens:
-        linhas = textwrap.wrap(msg.upper(), width=32) # Largura maior pois a fonte é menor
+        linhas = textwrap.wrap(msg.upper(), width=32)
         for linha in linhas:
             draw.text((largura/2, y), linha, fill=(0,0,0), font=f_rodape, anchor="mm")
             y += 20
@@ -87,7 +83,7 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     y += 20
     return img.crop((0, 0, largura, y + 10))
 
-# --- O RESTANTE DO CÓDIGO (INTERFACE) PERMANECE O MESMO ---
+# --- INICIALIZAÇÃO ---
 if 'vendas' not in st.session_state: st.session_state.vendas = []
 if 'sangrias' not in st.session_state: st.session_state.sangrias = []
 if 'cardapio' not in st.session_state: st.session_state.cardapio = {}
@@ -100,18 +96,22 @@ if 'show_desconto' not in st.session_state: st.session_state.show_desconto = Fal
 
 st.markdown("""<style>div.stButton > button { height: 5em; font-size: 16px; font-weight: bold; border-radius: 10px; }</style>""", unsafe_allow_html=True)
 
+# --- TELA DE CONFIGURAÇÃO ---
 if not st.session_state.configurado:
     st.title("⚙️ Gestão de Cardápio Seven Dwarfs")
-    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial if st.session_state.caixa_inicial > 0 else 0.0)
+    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial)
+    
     col_cfg1, col_cfg2 = st.columns(2)
     with col_cfg1:
         opcoes_base = ["Pilsen", "IPA", "Black Jack", "Vinho", "Manga", "Morango"]
         selec_base = st.multiselect("Sabores Fixos:", opcoes_base, default=[s for s in st.session_state.cardapio.keys() if s in opcoes_base])
+    
     with col_cfg2:
         extras_atuais = ", ".join([s for s in st.session_state.cardapio.keys() if s not in opcoes_base])
-        novos_extras = st.text_area("Adicionar Manualmente (Água, Refrigerante, Frutas):", value=extras_atuais, placeholder="Ex: Água, Refrigerante")
+        novos_extras = st.text_area("Adicionar Manualmente (Água, Refrigerante):", value=extras_atuais)
 
     lista_final = selec_base + [s.strip() for s in novos_extras.split(",") if s.strip()]
+    
     st.write("---")
     st.subheader("Defina os Preços:")
     temp_card = {}
@@ -129,6 +129,7 @@ if not st.session_state.configurado:
         else: st.error("Selecione um item.")
     st.stop()
 
+# --- INTERFACE PDV ---
 st.markdown("### 🍻 PDV Seven Dwarfs")
 t1, t2, t3 = st.tabs(["🛒 VENDER", "🔄 ESTORNO", "📊 FECHAMENTO"])
 
@@ -137,6 +138,7 @@ with t1:
     with cv:
         cols = st.columns(2)
         for i, (n, p) in enumerate(st.session_state.cardapio.items()):
+            # CORREÇÃO DA LINHA 126 (FECHAMENTO DE PARÊNTESES)
             if cols[i%2].button(f"{n}\nR$ {p:.2f}", key=f"v_{n}", use_container_width=True):
                 if n in st.session_state.carrinho: st.session_state.carrinho[n]['qtd'] += 1
                 else: st.session_state.carrinho[n] = {'preco': p, 'qtd': 1}
@@ -150,22 +152,29 @@ with t1:
                 c_i.write(f"**{it['qtd']}x {n}**")
                 if c_d.button("🗑️", key=f"del_{n}"): del st.session_state.carrinho[n]; st.rerun()
             st.markdown(f"## Total: R$ {total_venda:.2f}")
+            
             m_final = None; v_cobrado = total_venda
             c_pg = st.columns(2)
             if c_pg[0].button("PIX", use_container_width=True): m_final = "PIX"
             if c_pg[1].button("DÉBITO", use_container_width=True): m_final = "Débito"
             if c_pg[0].button("CRÉDITO", use_container_width=True): m_final = "Crédito"
             if c_pg[1].button("DINHEIRO", use_container_width=True): st.session_state.show_dinheiro = True
-            if c_ex := st.columns(2):
-                if c_ex[0].button("🎁 CORTESIA", use_container_width=True): m_final = "Cortesia"
-                if c_ex[1].button("🏷️ DESCONTO", use_container_width=True): st.session_state.show_desconto = True
+            
+            c_ex = st.columns(2)
+            if c_ex[0].button("🎁 CORTESIA", use_container_width=True): m_final = "Cortesia"
+            if c_ex[1].button("🏷️ DESCONTO", use_container_width=True): st.session_state.show_desconto = True
 
             if st.session_state.show_dinheiro:
-                rec = st.number_input("Recebido:", min_value=0.0)
+                rec = st.number_input("Recebido:", min_value=0.0, key="rec_dinheiro")
                 if rec >= total_venda:
                     st.success(f"Troco: R$ {rec-total_venda:.2f}")
                     if st.button("CONFIRMAR DINHEIRO"): m_final = "Dinheiro"; st.session_state.show_dinheiro = False
             
+            if st.session_state.show_desconto:
+                v_cobrado = st.number_input("VALOR FINAL:", min_value=0.0, value=total_venda)
+                f_desc = st.selectbox("Forma:", ["Dinheiro", "PIX", "Débito", "Crédito"])
+                if st.button("APLICAR"): m_final = f_desc; st.session_state.show_desconto = False
+
             if m_final:
                 v_id = int(datetime.now().timestamp())
                 qtd_t = sum(it['qtd'] for it in st.session_state.carrinho.values())
@@ -196,12 +205,25 @@ with t3:
     df_f = pd.DataFrame(st.session_state.vendas) if st.session_state.vendas else pd.DataFrame(columns=['Tipo', 'Valor'])
     def sm(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
     total_sang = sum(s['valor'] for s in st.session_state.sangrias)
+    
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("PIX", f"R$ {sm('PIX'):.2f}")
     c2.metric("CARTÃO", f"R$ {sm('Débito')+sm('Crédito'):.2f}")
     c3.metric("GAVETA", f"R$ {(st.session_state.caixa_inicial + sm('Dinheiro')) - total_sang:.2f}")
     c4.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
+
     st.divider()
     cs1, cs2 = st.columns(2)
     with cs1:
-        v_s = st.number_input("Valor Sangria:", min_value=0.0
+        st.write("#### 💸 Sangria")
+        # CORREÇÃO DA LINHA 207 (SINTAXE DO INPUT)
+        v_s = st.number_input("Valor Sangria:", min_value=0.0, key="val_sangria")
+        m_s = st.text_input("Motivo:", key="mot_sangria")
+        if st.button("REGISTRAR SANGRIA"):
+            st.session_state.sangrias.append({"valor": v_s, "motivo": m_s})
+            st.rerun()
+    with cs2:
+        if st.button("EDITAR CARDÁPIO", use_container_width=True): st.session_state.configurado = False; st.rerun()
+        if st.button("ZERAR TUDO", type="secondary", use_container_width=True):
+            for k in list(st.session_state.keys()): del st.session_state[k]
+            st.rerun()
