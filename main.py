@@ -3,14 +3,15 @@ import pandas as pd
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import os
+import textwrap
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Seven Dwarfs - PDV", layout="wide")
 
-# --- FUNÇÃO PARA GERAR A FICHA (LAYOUT REFINADO) ---
+# --- FUNÇÃO PARA GERAR A FICHA ---
 def gerar_ficha_imagem(sabor, id_venda, pagto):
     largura = 300
-    altura_estimada = 1000
+    altura_estimada = 1200 
     img = Image.new('RGB', (largura, altura_estimada), color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
     
@@ -23,7 +24,6 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
         return ImageFont.load_default()
 
     y = 30
-    # 1. Logo
     logo_file = "logo.png"
     if os.path.exists(logo_file):
         try:
@@ -33,16 +33,15 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
             y += logo.size[1] + 20
         except: y += 10
 
-    # 2. Sabor com Redução Inteligente
     draw.line([(15, y), (285, y)], fill=(0,0,0), width=5)
     y += 50
     
-    font_size = 85 # Começa um pouco menor para evitar cortes
+    font_size = 85
     msg_sabor = str(sabor).upper()
     while font_size > 20:
         f_temp = get_font(font_size)
         bbox = draw.textbbox((0, 0), msg_sabor, font=f_temp)
-        if (bbox[2] - bbox[0]) < 260: # Margem mais segura
+        if (bbox[2] - bbox[0]) < 265:
             break
         font_size -= 5
     
@@ -53,31 +52,33 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     draw.line([(15, y), (285, y)], fill=(0,0,0), width=5)
     y += 50
 
-    # 3. Informações de Venda
     f_info = get_font(24)
     draw.text((largura/2, y), f"VENDA ID: {str(id_venda)[-5:]}", fill=(0,0,0), font=f_info, anchor="mm")
     y += 35
-    draw.text((largura/2, y), f"PAGTO: {str(pagto).upper()}", fill=(0,0,0), font=f_info, anchor="mm")
+    draw.text((largura/2, y), f"PAGAMENTO: {str(pagto).upper()}", fill=(0,0,0), font=f_info, anchor="mm")
     
     y += 60 
 
-    # 4. Rodapé Fixo
-    f_rodape = get_font(14)
+    f_rodape = get_font(16)
     data_str = datetime.now().strftime("%d/%m/%Y - %H:%M")
     
-    linhas_rodape = [
+    mensagens = [
         f"Emitido em: {data_str}",
-        "Valido apenas na data de emissao",
-        "Seven Dwarfs: Delicia Gelada",
-        "BEBA COM MODERACAO",
-        "--------------------------------"
+        "Válido apenas na data de emissão durante o evento",
+        "Seven Dwarfs a verdadeira delícia gelada",
+        "BEBA COM MODERAÇÃO"
     ]
 
-    for linha in linhas_rodape:
-        draw.text((largura/2, y), linha.upper(), fill=(0,0,0), font=f_rodape, anchor="mm")
-        y += 22
+    for msg in mensagens:
+        linhas = textwrap.wrap(msg.upper(), width=28)
+        for linha in linhas:
+            draw.text((largura/2, y), linha, fill=(0,0,0), font=f_rodape, anchor="mm")
+            y += 25
+        y += 5 
 
-    return img.crop((0, 0, largura, y + 20))
+    draw.text((largura/2, y), "--------------------------------", fill=(0,0,0), font=f_rodape, anchor="mm")
+    y += 20
+    return img.crop((0, 0, largura, y + 10))
 
 # --- INICIALIZAÇÃO ---
 if 'vendas' not in st.session_state: st.session_state.vendas = []
@@ -92,24 +93,39 @@ if 'show_desconto' not in st.session_state: st.session_state.show_desconto = Fal
 
 st.markdown("""<style>div.stButton > button { height: 5em; font-size: 16px; font-weight: bold; border-radius: 10px; }</style>""", unsafe_allow_html=True)
 
-# --- TELA CONFIG ---
+# --- TELA DE CONFIGURAÇÃO (AGORA COM ENTRADA DE NOVOS SABORES) ---
 if not st.session_state.configurado:
-    st.title("⚙️ Configuração Cardápio")
-    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial if st.session_state.caixa_inicial > 0 else None, placeholder="0.00")
-    opcoes = ["Pilsen", "IPA", "Vinho", "Weiss", "Black", "Água", "Refrigerante"]
-    selec = st.multiselect("Sabores Ativos:", opcoes, default=list(st.session_state.cardapio.keys()) if st.session_state.cardapio else ["Pilsen", "IPA"])
-    temp_card = {}
-    for s in selec:
-        p_val = st.session_state.cardapio.get(s, None)
-        temp_card[s] = st.number_input(f"Preço {s}:", min_value=0.0, format="%.2f", key=f"p_{s}", value=p_val, placeholder="0.00")
+    st.title("⚙️ Gestão de Cardápio Sazonal")
+    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial if st.session_state.caixa_inicial > 0 else 0.0)
     
-    if st.button("SALVAR E ABRIR VENDAS", type="primary", use_container_width=True):
-        if selec:
-            st.session_state.caixa_inicial = v_ini if v_ini else 0.0
-            st.session_state.cardapio = {k: (v if v else 0.0) for k, v in temp_card.items()}
+    col_cfg1, col_cfg2 = st.columns(2)
+    with col_cfg1:
+        opcoes_base = ["Pilsen", "IPA", "Vinho", "Weiss", "Black", "Água", "Refrigerante"]
+        selec_base = st.multiselect("Sabores Fixos:", opcoes_base, default=[s for s in st.session_state.cardapio.keys() if s in opcoes_base])
+    
+    with col_cfg2:
+        # AQUI VOCÊ INFORMA AS FRUTAS E RECEITAS NOVAS
+        extras_atuais = ", ".join([s for s in st.session_state.cardapio.keys() if s not in opcoes_base])
+        novos_extras = st.text_area("Novos Sabores / Frutas (separe por vírgula):", value=extras_atuais, placeholder="Ex: Morango, Maracujá, Especial Verão")
+
+    # Processar a lista final
+    lista_final = selec_base + [s.strip() for s in novos_extras.split(",") if s.strip()]
+    
+    st.write("---")
+    st.subheader("Defina os Preços de Hoje:")
+    temp_card = {}
+    cols_p = st.columns(3)
+    for i, s in enumerate(lista_final):
+        p_sugestao = st.session_state.cardapio.get(s, 0.0)
+        temp_card[s] = cols_p[i%3].number_input(f"R$ {s}:", min_value=0.0, format="%.2f", key=f"p_{s}", value=p_sugestao)
+    
+    if st.button("SALVAR E IR PARA VENDAS", type="primary", use_container_width=True):
+        if lista_final:
+            st.session_state.caixa_inicial = v_ini
+            st.session_state.cardapio = temp_card
             st.session_state.configurado = True
             st.rerun()
-        else: st.error("Escolha um sabor.")
+        else: st.error("Adicione ao menos um sabor.")
     st.stop()
 
 # --- INTERFACE PDV ---
@@ -121,7 +137,6 @@ with t1:
     with cv:
         cols = st.columns(2)
         for i, (n, p) in enumerate(st.session_state.cardapio.items()):
-            # CORREÇÃO DO ERRO DA FOTO (LINHA 126)
             if cols[i%2].button(f"{n}\nR$ {p:.2f}", key=f"v_{n}", use_container_width=True):
                 if n in st.session_state.carrinho: st.session_state.carrinho[n]['qtd'] += 1
                 else: st.session_state.carrinho[n] = {'preco': p, 'qtd': 1}
@@ -153,11 +168,6 @@ with t1:
                     st.success(f"Troco: R$ {rec-total_venda:.2f}")
                     if st.button("CONFIRMAR DINHEIRO"): m_final = "Dinheiro"; st.session_state.show_dinheiro = False
             
-            if st.session_state.show_desconto:
-                v_cobrado = st.number_input("VALOR COBRADO:", min_value=0.0, value=total_venda)
-                f_desc = st.selectbox("Forma:", ["Dinheiro", "PIX", "Débito", "Crédito"])
-                if st.button("APLICAR"): m_final = f_desc; st.session_state.show_desconto = False
-
             if m_final:
                 v_id = int(datetime.now().timestamp())
                 qtd_t = sum(it['qtd'] for it in st.session_state.carrinho.values())
@@ -192,7 +202,6 @@ with t3:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("PIX", f"R$ {sm('PIX'):.2f}")
     c2.metric("CARTÃO", f"R$ {sm('Débito')+sm('Crédito'):.2f}")
-    # CORREÇÃO DO ERRO DA FOTO (LINHA 205)
     valor_gaveta = (st.session_state.caixa_inicial + sm('Dinheiro')) - total_sang
     c3.metric("GAVETA", f"R$ {valor_gaveta:.2f}")
     c4.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
@@ -208,7 +217,7 @@ with t3:
             st.rerun()
     with cs2:
         st.write("#### ⚙️ Gestão")
-        if st.button("EDITAR SABORES/PREÇOS", use_container_width=True):
+        if st.button("EDITAR CARDÁPIO", use_container_width=True):
             st.session_state.configurado = False; st.rerun()
         if st.button("ZERAR TUDO", type="secondary", use_container_width=True):
             for k in list(st.session_state.keys()): del st.session_state[k]
