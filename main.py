@@ -7,25 +7,7 @@ import os
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Seven Dwarfs - PDV", layout="wide")
 
-# --- FUNÇÕES DE BACKUP ---
-CSV_FILE = "vendas_backup.csv"
-
-def salvar_venda_csv(venda_dict):
-    df = pd.DataFrame([venda_dict])
-    if not os.path.isfile(CSV_FILE):
-        df.to_csv(CSV_FILE, index=False)
-    else:
-        df.to_csv(CSV_FILE, mode='a', header=False, index=False)
-
-def carregar_backup():
-    if os.path.exists(CSV_FILE):
-        try:
-            return pd.read_csv(CSV_FILE).to_dict('records')
-        except:
-            return []
-    return []
-
-# --- FUNÇÃO PARA GERAR A FICHA ---
+# --- FUNÇÃO PARA GERAR A FICHA (ESTÁVEL) ---
 def gerar_ficha_imagem(sabor, id_venda, pagto):
     img = Image.new('RGB', (300, 900), color=(255, 255, 255))
     d = ImageDraw.Draw(img)
@@ -51,6 +33,7 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
         except: return ImageFont.load_default()
 
     f_sabor = get_font(95); f_info = get_font(24); f_peq = get_font(16)
+    
     d.line([(10, y), (290, y)], fill=(0,0,0), width=6)
     y += 100 
     d.text((150, y), sabor.upper(), fill=(0,0,0), font=f_sabor, anchor="ms")
@@ -73,9 +56,8 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     d.text((150, y), "---------------------------", fill=(0,0,0), anchor="ms")
     return img.crop((0, 0, 300, y + 20))
 
-# --- INICIALIZAÇÃO ---
-if 'vendas' not in st.session_state: 
-    st.session_state.vendas = carregar_backup()
+# --- INICIALIZAÇÃO DE ESTADOS ---
+if 'vendas' not in st.session_state: st.session_state.vendas = []
 if 'caixa_inicial' not in st.session_state: st.session_state.caixa_inicial = 0.0
 if 'cardapio' not in st.session_state: st.session_state.cardapio = {}
 if 'configurado' not in st.session_state: st.session_state.configurado = False
@@ -86,25 +68,27 @@ if 'show_desconto' not in st.session_state: st.session_state.show_desconto = Fal
 
 st.markdown("""<style>div.stButton > button { height: 5em; font-size: 16px; font-weight: bold; border-radius: 10px; margin-bottom: 5px; white-space: pre-wrap; }</style>""", unsafe_allow_html=True)
 
-# --- ABERTURA ---
+# --- TELA 1: CONFIGURAÇÃO ---
 if not st.session_state.configurado:
     st.title("🚀 Abertura Seven Dwarfs")
-    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, step=1.0, format="%.2f", value=0.0)
+    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=None, placeholder="0.00")
     st.divider()
     opcoes = ["Pilsen", "IPA", "Vinho", "Weiss", "Black", "Água", "Refrigerante"]
     selec = st.multiselect("Sabores de Hoje:", opcoes, default=["Pilsen", "IPA"])
     temp_card = {}
     for s in selec: 
-        temp_card[s] = st.number_input(f"Preço {s}:", min_value=0.0, step=0.5, format="%.2f", key=f"p_{s}", value=0.0)
+        temp_card[s] = st.number_input(f"Preço {s}:", min_value=0.0, format="%.2f", key=f"p_{s}", value=None, placeholder="0.00")
     
     if st.button("ABRIR CAIXA E INICIAR", type="primary", use_container_width=True):
-        st.session_state.caixa_inicial = v_ini
-        st.session_state.cardapio = temp_card
-        st.session_state.configurado = True
-        st.rerun()
+        if selec:
+            st.session_state.caixa_inicial = v_ini if v_ini else 0.0
+            st.session_state.cardapio = {k: (v if v else 0.0) for k, v in temp_card.items()}
+            st.session_state.configurado = True
+            st.rerun()
+        else: st.error("Selecione ao menos um sabor.")
     st.stop()
 
-# --- INTERFACE PDV ---
+# --- TELA 2: PDV ---
 st.markdown("### 🍻 SEVEN DWARFS BEER")
 t1, t2, t3 = st.tabs(["🛒 VENDER", "🔄 ESTORNO", "📊 FECHAMENTO"])
 
@@ -139,25 +123,23 @@ with t1:
             if c_ex[1].button("🏷️ DESCONTO", use_container_width=True): st.session_state.show_desconto = True
 
             if st.session_state.show_dinheiro:
-                rec = st.number_input("Valor Recebido:", min_value=0.0, key="din_rec", value=0.0)
+                rec = st.number_input("Valor Recebido:", min_value=0.0, key="din_rec")
                 if rec >= total_venda:
                     st.success(f"Troco: R$ {rec-total_venda:.2f}")
                     if st.button("CONFIRMAR DINHEIRO"): m_final = "Dinheiro"; st.session_state.show_dinheiro = False
             
             if st.session_state.show_desconto:
-                v_cobrado = st.number_input("VALOR FINAL COM DESCONTO:", min_value=0.0, value=total_venda)
+                v_cobrado = st.number_input("VALOR FINAL A COBRAR:", min_value=0.0, value=total_venda)
                 f_desc = st.selectbox("Forma Pagto:", ["Dinheiro", "PIX", "Débito", "Crédito"])
                 if st.button("APLICAR DESCONTO"): m_final = f_desc; st.session_state.show_desconto = False
 
             if m_final:
                 v_id = int(datetime.now().timestamp())
-                qtd_total = sum(it['qtd'] for it in st.session_state.carrinho.values())
-                valor_final_item = (v_cobrado / qtd_total) if m_final != "Cortesia" else 0.0
+                qtd_t = sum(it['qtd'] for it in st.session_state.carrinho.values())
+                v_item = (v_cobrado / qtd_t) if m_final != "Cortesia" else 0.0
                 for n, it in st.session_state.carrinho.items():
                     for _ in range(it['qtd']):
-                        nova_venda = {"id_venda": v_id, "Sabor": n, "Valor": valor_final_item, "Tipo": m_final, "Hora": datetime.now().strftime("%H:%M")}
-                        st.session_state.vendas.append(nova_venda)
-                        salvar_venda_csv(nova_venda) # SALVA NO BACKUP
+                        st.session_state.vendas.append({"id_venda": v_id, "Sabor": n, "Valor": v_item, "Tipo": m_final, "Hora": datetime.now().strftime("%H:%M")})
                         st.session_state.fichas_pendentes.append(gerar_ficha_imagem(n, v_id, m_final))
                 st.session_state.carrinho = {}; st.rerun()
         
@@ -167,37 +149,33 @@ with t1:
                 st.session_state.fichas_pendentes = []
 
 with t2:
+    st.write("### 🔄 Estorno por Item")
     if not st.session_state.vendas: st.info("Sem vendas.")
     else:
         df_v = pd.DataFrame(st.session_state.vendas)
         v_sel = st.selectbox("Venda ID:", df_v['id_venda'].unique(), format_func=lambda x: f"ID {str(x)[-5:]}")
-        if st.button("ESTORNAR VENDA SELECIONADA"):
-            st.session_state.vendas = [v for v in st.session_state.vendas if v['id_venda'] != v_sel]
-            # Atualiza o arquivo CSV após estorno
-            df_atualizado = pd.DataFrame(st.session_state.vendas)
-            df_atualizado.to_csv(CSV_FILE, index=False)
-            st.success("Estorno realizado no backup!"); st.rerun()
+        itens_venda = [v for v in st.session_state.vendas if v['id_venda'] == v_sel]
+        remover = []
+        for idx, item in enumerate(itens_venda):
+            if st.checkbox(f"{item['Sabor']} - R$ {item['Valor']:.2f}", key=f"est_{v_sel}_{idx}"):
+                remover.append(item)
+        if remover and st.button("CONFIRMAR ESTORNO SELECIONADO"):
+            for r in remover: st.session_state.vendas.remove(r)
+            st.rerun()
 
 with t3:
     if st.session_state.vendas:
         df_f = pd.DataFrame(st.session_state.vendas)
-        def soma_tipo(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
-        
+        def soma(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
         c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("PIX", f"R$ {soma_tipo('PIX'):.2f}")
-        c2.metric("DÉBITO", f"R$ {soma_tipo('Débito'):.2f}")
-        c3.metric("CRÉDITO", f"R$ {soma_tipo('Crédito'):.2f}")
-        c4.metric("DINHEIRO", f"R$ {(st.session_state.caixa_inicial + soma_tipo('Dinheiro')):.2f}")
-        c5.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} Copos")
-        
+        c1.metric("PIX", f"R$ {soma('PIX'):.2f}")
+        c2.metric("DÉBITO", f"R$ {soma('Débito'):.2f}")
+        c3.metric("CRÉDITO", f"R$ {soma('Crédito'):.2f}")
+        c4.metric("DINHEIRO", f"R$ {(st.session_state.caixa_inicial + soma('Dinheiro')):.2f}")
+        c5.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
         st.divider()
-        st.write("#### Quantidade por Sabor")
+        st.write("#### Por Sabor")
         st.table(df_f.groupby('Sabor').size().reset_index(name='Qtd'))
-        
-        # Botão para baixar o relatório em Excel/CSV se quiser
-        st.download_button("Baixar Relatório Completo (CSV)", df_f.to_csv(index=False), "vendas_evento.csv", "text/csv")
-
-    if st.button("ZERAR EVENTO (Limpa Backup)"):
-        if os.path.exists(CSV_FILE): os.remove(CSV_FILE)
+    if st.button("LIMPAR TUDO"):
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
