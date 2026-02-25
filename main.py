@@ -1,129 +1,168 @@
-# =================================================================
-# SISTEMA DE GESTÃO DE EVENTOS - VERSÃO INTEGRADA 2026
-# =================================================================
 import pandas as pd
 from datetime import datetime
+import os
 
-# --- MÓDULO 1: CONFIGURAÇÃO E ABERTURA ---
-NOME_EVENTO = "Grande Gala 2026"
-vendas_realizadas = []
+# --- CONFIGURAÇÃO E PERSISTÊNCIA ---
+NOME_EVENTO = "Chopp Seven Dwarfs"
+ARQUIVO_DADOS = "vendas_seven_dwarfs.csv"
+ARQUIVO_CONTAS = "contas_abertas.csv"
 
-# Organização do Cardápio (Código: {Item, Preço})
+# Cardápio Fixo
 cardapio = {
-    101: {"item": "Cerveja Lata", "preco": 8.00},
-    102: {"item": "Refrigerante", "preco": 6.00},
-    103: {"item": "Espetinho Carne", "preco": 12.00},
-    104: {"item": "Água Mineral", "preco": 4.00},
-    105: {"item": "Combo Galera", "preco": 45.00}
+    1: {"item": "Pilsen", "preco": 10.00},
+    2: {"item": "IPA", "preco": 15.00},
+    3: {"item": "Black Jack", "preco": 15.00},
+    4: {"item": "Vinho", "preco": 12.00},
+    5: {"item": "Manga", "preco": 13.00}
 }
 
-def exibir_boas_vindas():
-    print(f"\n{'='*40}")
-    print(f"{NOME_EVENTO.center(40)}")
-    print(f"Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    print(f"{'='*40}\n")
+vendas_realizadas = []
+contas_abertas = {} # { "Nome": [lista_de_itens] }
 
-# --- MÓDULO 2: VENDAS, CARRINHO E FICHAS ---
+def salvar_dados():
+    df = pd.DataFrame(vendas_realizadas)
+    df.to_csv(ARQUIVO_DADOS, index=False)
+
+# --- MÓDULO DE VENDAS ---
 def realizar_venda():
     carrinho = []
-    total_venda = 0
+    total_original = 0
     
-    print(">>> INICIAR NOVO PEDIDO")
+    print(f"\n>>> NOVO PEDIDO - {NOME_EVENTO}")
     while True:
+        print("\nCardápio: 1-Pilsen, 2-IPA, 3-Black Jack, 4-Vinho, 5-Manga | 0-Finalizar | 99-Manual")
         try:
-            cod = int(input("Código do item (0 para finalizar / 99 para cancelar): "))
+            cod = int(input("Seleção: "))
             if cod == 0: break
-            if cod == 99: return print("Venda cancelada pelo operador.")
             
-            if cod in cardapio:
-                qtd = int(input(f"Quantidade de [{cardapio[cod]['item']}]: "))
-                if qtd <= 0: continue
-                
-                subtotal = cardapio[cod]['preco'] * qtd
-                carrinho.append({
-                    "item": cardapio[cod]['item'], 
-                    "qtd": qtd, 
-                    "subtotal": subtotal
-                })
-                total_venda += subtotal
-                print(f"Adicionado: {qtd}x {cardapio[cod]['item']} - R$ {subtotal:.2f}")
-            else:
-                print("⚠️ Código não encontrado no cardápio!")
-        except ValueError:
-            print("⚠️ Erro: Insira apenas números.")
+            item_nome = ""
+            preco_unit = 0.0
 
-    if total_venda > 0:
-        print(f"\nTOTAL DO PEDIDO: R$ {total_venda:.2f}")
-        pagto = input("Forma de Pagamento (PIX/CARTAO/DINHEIRO): ").upper()
-        
-        id_venda = len(vendas_realizadas) + 1
-        dados_venda = {
-            "id": id_venda,
-            "itens": carrinho,
-            "total": total_venda,
-            "metodo": pagto,
-            "status": "CONCLUIDA",
-            "hora": datetime.now().strftime('%H:%M:%S')
-        }
+            if cod in cardapio:
+                item_nome = cardapio[cod]['item']
+                preco_unit = cardapio[cod]['preco']
+            elif cod == 99:
+                item_nome = input("Nome do item manual: ")
+                preco_unit = float(input("Preço unitário: "))
+            else:
+                print("Código inválido!")
+                continue
+
+            # Simulação dos botões +/- (no terminal via input de qtd)
+            qtd = int(input(f"Quantidade de {item_nome} (+/-): "))
+            if qtd <= 0: continue
+            
+            subtotal = preco_unit * qtd
+            carrinho.append({"item": item_nome, "qtd": qtd, "preco_unit": preco_unit, "subtotal": subtotal})
+            total_original += subtotal
+            print(f"Carrinho: {qtd}x {item_nome} - Subtotal: R$ {subtotal:.2f}")
+
+        except ValueError:
+            print("Entrada inválida.")
+
+    if not carrinho: return
+
+    print(f"\nTOTAL ORIGINAL: R$ {total_original:.2f}")
+    print("Pagamento: 1-PIX | 2-DÉBITO | 3-CRÉDITO | 4-DINHEIRO | 5-CORTESIA | 6-CONTA | 7-DESCONTO")
+    opcao = input("Escolha a opção: ")
+
+    metodo = ""
+    valor_pago = total_original
+    nome_conta = ""
+
+    if opcao == "1": metodo = "PIX"
+    elif opcao == "2": metodo = "DEBITO"
+    elif opcao == "3": metodo = "CREDITO"
+    elif opcao == "4":
+        metodo = "DINHEIRO"
+        recebido = float(input("Valor recebido: "))
+        print(f"TROCO: R$ {recebido - total_original:.2f}")
+    elif opcao == "5":
+        metodo = "CORTESIA"
+        valor_pago = 0.0
+    elif opcao == "6":
+        metodo = "CONTA"
+        nome_conta = input("Nome para a conta (Organizador/Amigo): ").upper()
+        if nome_conta not in contas_abertas: contas_abertas[nome_conta] = []
+        contas_abertas[nome_conta].extend(carrinho)
+        print(f"Registrado na conta de {nome_conta}")
+    elif opcao == "7":
+        metodo = "DESCONTO"
+        valor_pago = float(input("Informe o valor final a ser pago: "))
+
+    # Registro da Venda
+    id_venda = len(vendas_realizadas) + 1
+    dados_venda = {
+        "id": id_venda,
+        "itens": carrinho,
+        "total_real": valor_pago,
+        "metodo": metodo,
+        "cliente": nome_conta,
+        "status": "CONCLUIDA",
+        "data_hora": datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    }
+    
+    if metodo != "CONTA":
         vendas_realizadas.append(dados_venda)
         imprimir_ficha(dados_venda)
+        salvar_dados()
 
 def imprimir_ficha(venda):
-    print(f"\n{'*'*30}")
-    print(f"FICHA DE CONSUMO - ID: {venda['id']}")
+    print(f"\n{'-'*30}")
+    print("      CHOPP SEVEN DWARFS") # Logo simplificado
+    print(f"ID: {venda['id']}")
+    print(f"{venda['metodo']}") # Forma resumida conforme pedido
+    print(f"{'-'*30}")
     for i in venda['itens']:
         print(f"{i['qtd']}x {i['item']}")
-    print(f"PAGAMENTO: {venda['metodo']}")
-    print(f"VALOR: R$ {venda['total']:.2f}")
-    print(f"{'*'*30}\n")
+    print(f"{'-'*30}")
+    print(f"TOTAL: R$ {venda['total_real']:.2f}")
+    # Rodapé conforme especificações
+    print(f"\n{venda['data_hora']}")
+    print("Válido apenas na data de emissão durante o evento")
+    print("Chopp Seven Dwarfs a verdadeira delícia gelada")
+    print("BEBA COM MODERAÇÃO")
+    print(f"{'-'*30}\n")
 
-# --- MÓDULO 3: ESTORNOS E AJUSTES ---
+# --- MÓDULO DE ESTORNO (INDIVIDUAL OU TOTAL) ---
 def estornar_venda():
-    try:
-        id_busca = int(input("Informe o ID da venda para ESTORNO: "))
-        for venda in vendas_realizadas:
-            if venda['id'] == id_busca:
-                if venda['status'] == "ESTORNADA":
-                    print("⚠️ Esta venda já foi estornada anteriormente.")
-                    return
-                
-                confirmar = input(f"Confirmar estorno de R$ {venda['total']:.2f}? (S/N): ").upper()
-                if confirmar == 'S':
-                    venda['status'] = "ESTORNADA"
-                    print(f"✅ SUCESSO: Venda {id_busca} estornada.")
-                    return
-        print("❌ ID não encontrado.")
-    except ValueError:
-        print("⚠️ Erro: ID inválido.")
+    id_busca = int(input("ID da venda para estorno: "))
+    for venda in vendas_realizadas:
+        if venda['id'] == id_busca:
+            print("1- Estornar TUDO | 2- Selecionar itens individuais")
+            tipo = input("Opção: ")
+            if tipo == "1":
+                venda['status'] = "ESTORNADA"
+                venda['total_real'] = 0
+            else:
+                for i, item in enumerate(venda['itens']):
+                    op = input(f"Estornar {item['item']}? (S/N): ").upper()
+                    if op == 'S':
+                        venda['total_real'] -= item['subtotal']
+                        item['qtd'] = 0 # Zera a qtd no relatório
+            salvar_dados()
+            print("Procedimento de estorno finalizado.")
+            return
 
-# --- MÓDULO 4: FECHAMENTO E RELATÓRIOS ---
-def gerar_relatorio_fechamento():
-    if not vendas_realizadas:
-        return print("\nNenhuma venda registrada para gerar relatório.")
-
+# --- MÓDULO DE FECHAMENTO ---
+def fechar_evento():
     df = pd.DataFrame(vendas_realizadas)
-    vendas_ativas = df[df['status'] == "CONCLUIDA"]
+    if df.empty: return print("Sem vendas.")
     
-    faturamento_bruto = df['total'].sum()
-    estornos = df[df['status'] == "ESTORNADA"]['total'].sum()
-    faturamento_liquido = vendas_ativas['total'].sum()
+    print("\n" + "#"*40)
+    print("ESTATÍSTICAS DE FECHAMENTO")
+    print("#"*40)
+    print(f"Faturamento Total: R$ {df[df['status']=='CONCLUIDA']['total_real'].sum():.2f}")
+    print("\nVendas por Método:")
+    print(df.groupby('metodo')['total_real'].sum())
+    
+    print("\nContas Pendentes:")
+    for nome, itens in contas_abertas.items():
+        total_conta = sum(i['subtotal'] for i in itens)
+        print(f"- {nome}: R$ {total_conta:.2f}")
+    print("#"*40)
 
-    print(f"\n{'#'*40}")
-    print(f"RESUMO DE FECHAMENTO - {NOME_EVENTO}")
-    print(f"{'#'*40}")
-    print(f"Faturamento Bruto:   R$ {faturamento_bruto:.2f}")
-    print(f"Total Estornado:     R$ {estornos:.2f}")
-    print(f"Faturamento Líquido: R$ {faturamento_liquido:.2f}")
-    print(f"Qtd Vendas (Ativas): {len(vendas_ativas)}")
-    print("-" * 40)
-    if not vendas_ativas.empty:
-        print("VENDAS POR MÉTODO DE PAGAMENTO:")
-        print(vendas_ativas.groupby('metodo')['total'].sum().to_string())
-    print(f"{'#'*40}\n")
-
-# --- INICIALIZAÇÃO DO SISTEMA ---
-exibir_boas_vindas()
-# Para usar, chame as funções:
-# realizar_venda()
-# estornar_venda()
-# gerar_relatorio_fechamento()
+# Exemplo de execução
+if __name__ == "__main__":
+    # realizar_venda()
+    pass
