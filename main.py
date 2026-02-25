@@ -1,59 +1,81 @@
-# --- TELA DE CONFIGURAÇÃO (CORRIGIDA) ---
-if st.session_state.configurado == False:
-    st.title("⚙️ Gestão de Cardápio Seven Dwarfs")
-    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial)
-    
-    col_cfg1, col_cfg2 = st.columns(2)
-    with col_cfg1:
-        opcoes_base = ["Pilsen", "IPA", "Black Jack", "Vinho", "Manga", "Morango"]
-        # Mantém o que já estava selecionado no estado do cardápio
-        default_base = [s for s in st.session_state.cardapio.keys() if s in opcoes_base]
-        selec_base = st.multiselect("Sabores Fixos:", opcoes_base, default=default_base)
-    
-    with col_cfg2:
-        # Pega itens extras que NÃO estão nas opções base para preencher o texto
-        extras_atuais_lista = [s for s in st.session_state.cardapio.keys() if s not in opcoes_base]
-        extras_atuais_str = ", ".join(extras_atuais_lista)
-        
-        # O segredo aqui é o 'value' vir do que já existe, mas processar a saída corretamente
-        novos_extras_input = st.text_area("Adicionar Outros (Separe por vírgula):", 
-                                        value=extras_atuais_str,
-                                        placeholder="Ex: Água, Refrigerante, Suco",
-                                        key="input_extras_area")
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
+import os
+import textwrap
 
-    # Processamento: transformamos a string em lista, limpando espaços e removendo duplicatas
-    lista_extras = [s.strip() for s in novos_extras_input.split(",") if s.strip()]
-    # União de Sabores Fixos + Extras (preservando a ordem)
-    lista_total_config = []
-    for item in (selec_base + lista_extras):
-        if item not in lista_total_config:
-            lista_total_config.append(item)
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="Seven Dwarfs - PDV", layout="wide")
+
+# --- 1. INICIALIZAÇÃO DE ESTADOS (Sempre no topo) ---
+if 'vendas' not in st.session_state: st.session_state.vendas = []
+if 'sangrias' not in st.session_state: st.session_state.sangrias = []
+if 'fichas_pendentes' not in st.session_state: st.session_state.fichas_pendentes = []
+if 'cardapio' not in st.session_state: st.session_state.cardapio = {}
+if 'caixa_inicial' not in st.session_state: st.session_state.caixa_inicial = 0.0
+if 'configurado' not in st.session_state: st.session_state.configurado = False
+if 'carrinho' not in st.session_state: st.session_state.carrinho = {}
+if 'show_dinheiro' not in st.session_state: st.session_state.show_dinheiro = False
+if 'show_desconto' not in st.session_state: st.session_state.show_desconto = False
+
+# --- FUNÇÃO PARA GERAR A FICHA ---
+def gerar_ficha_imagem(sabor, id_venda, pagto):
+    largura = 300
+    altura_estimada = 1200 
+    img = Image.new('RGB', (largura, altura_estimada), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
     
-    st.write("---")
-    st.subheader("Defina os Preços:")
-    temp_card = {}
-    
-    if lista_total_config:
-        cols_p = st.columns(3)
-        for i, s in enumerate(lista_total_config):
-            # Buscamos o preço que já existia no estado global para não resetar enquanto digita
-            p_existente = st.session_state.cardapio.get(s, 0.0)
-            
-            # A CHAVE (key) precisa ser única por nome de produto para o Streamlit não perder a referência
-            temp_card[s] = cols_p[i%3].number_input(
-                f"Preço {s}:", 
-                min_value=0.0, 
-                format="%.2f", 
-                key=f"preco_final_{s}", # Chave dinâmica baseada no nome
-                value=float(p_existente)
-            )
-    
-    if st.button("SALVAR E ABRIR VENDAS", type="primary", use_container_width=True):
-        if lista_total_config:
-            st.session_state.caixa_inicial = v_ini
-            st.session_state.cardapio = temp_card
-            st.session_state.configurado = True
-            st.rerun()
+    def get_font(size, bold=True):
+        if bold:
+            paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 
+                     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
         else:
-            st.error("Selecione ou digite pelo menos um item.")
-    st.stop()
+            paths = ["/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 
+                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+        for path in paths:
+            if os.path.exists(path): return ImageFont.truetype(path, size)
+        return ImageFont.load_default()
+
+    y = 30
+    logo_file = "logo.png"
+    if os.path.exists(logo_file):
+        try:
+            logo = Image.open(logo_file).convert("RGBA")
+            logo.thumbnail((110, 110))
+            img.paste(logo, ((largura - logo.size[0]) // 2, y), logo)
+            y += logo.size[1] + 20
+        except: y += 10
+
+    draw.line([(15, y), (285, y)], fill=(0,0,0), width=5)
+    y += 50
+    
+    font_size = 85
+    msg_sabor = str(sabor).upper()
+    while font_size > 20:
+        f_temp = get_font(font_size, bold=True)
+        bbox = draw.textbbox((0, 0), msg_sabor, font=f_temp)
+        if (bbox[2] - bbox[0]) < 265:
+            break
+        font_size -= 5
+    
+    draw.text((largura/2, y), msg_sabor, fill=(0,0,0), font=get_font(font_size, bold=True), anchor="mm")
+    
+    y += 50
+    draw.line([(15, y), (285, y)], fill=(0,0,0), width=5)
+    y += 50
+
+    f_info = get_font(24, bold=True)
+    draw.text((largura/2, y), f"VENDA ID: {str(id_venda)[-5:]}", fill=(0,0,0), font=f_info, anchor="mm")
+    y += 35
+    draw.text((largura/2, y), f"PAGAMENTO: {str(pagto).upper()}", fill=(0,0,0), font=f_info, anchor="mm")
+    
+    y += 60 
+
+    f_rodape = get_font(14, bold=False)
+    data_str = datetime.now().strftime("%d/%m/%Y - %H:%M")
+    
+    mensagens = [
+        f"Emitido em: {data_str}",
+        "Válido apenas na data de emissão durante o evento",
+        "Seven Dwarfs a verdadeira delícia gelada
