@@ -117,5 +117,39 @@ with t1:
 
             if m_final:
                 v_id = int(datetime.now().timestamp())
-                for n, it in st.session_state
-                
+                for n, it in st.session_state.carrinho.items():
+                    for _ in range(it['qtd']):
+                        st.session_state.vendas.append({"id_venda": v_id, "Sabor": n, "Valor": it['preco'], "Tipo": m_final, "Hora": datetime.now().strftime("%H:%M")})
+                        st.session_state.fichas_pendentes.append(gerar_ficha_imagem(n, v_id, m_final))
+                st.session_state.carrinho = {}; st.rerun()
+        
+        if st.session_state.fichas_pendentes:
+            if st.button("🔥 IMPRIMIR FICHAS", type="primary", use_container_width=True):
+                for f in st.session_state.fichas_pendentes: st.image(f)
+                st.session_state.fichas_pendentes = []
+
+with t2:
+    if not st.session_state.vendas: st.info("Sem vendas.")
+    else:
+        df_v = pd.DataFrame(st.session_state.vendas)
+        v_sel = st.selectbox("Venda ID:", df_v['id_venda'].unique(), format_func=lambda x: f"ID {str(x)[-5:]}")
+        itens_v = [v for v in st.session_state.vendas if v['id_venda'] == v_sel]
+        for idx, item in enumerate(itens_v):
+            if st.button(f"Estornar {item['Sabor']} (R$ {item['Valor']:.2f})", key=f"est_{idx}"):
+                st.session_state.vendas.remove(item); st.rerun()
+
+with t3:
+    df_f = pd.DataFrame(st.session_state.vendas) if st.session_state.vendas else pd.DataFrame(columns=['Tipo', 'Valor'])
+    def sm(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
+    total_sang = sum(s['valor'] for s in st.session_state.sangrias)
+    
+    st.subheader("Resumo")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("PIX", f"R$ {sm('PIX'):.2f}")
+    c2.metric("Cartão", f"R$ {sm('Débito')+sm('Crédito'):.2f}")
+    c3.metric("Gaveta", f"R$ {(st.session_state.caixa_inicial + sm('Dinheiro')) - total_sang:.2f}")
+
+    if st.button("ALTERAR CARDÁPIO"): st.session_state.configurado = False; st.rerun()
+    if st.button("ZERAR TUDO"):
+        for k in list(st.session_state.keys()): del st.session_state[k]
+        st.rerun()
