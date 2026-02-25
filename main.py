@@ -162,4 +162,78 @@ with t1:
             
             # Pagamentos
             metodo = None
-            p1, p2
+            p1, p2, p3 = st.columns(3)
+            if p1.button("PIX"): metodo = "PIX"
+            if p2.button("DÉBITO"): metodo = "Débito"
+            if p3.button("CRÉDITO"): metodo = "Crédito"
+            
+            p4, p5, p6 = st.columns(3)
+            if p4.button("CORTESIA"): metodo = "Cortesia"
+            if p5.button("DINHEIRO"): st.session_state.show_dinheiro = not st.session_state.show_dinheiro; st.rerun()
+            if p6.button("VIP"): st.session_state.show_vip = not st.session_state.show_vip; st.rerun()
+
+            if st.session_state.show_dinheiro:
+                v_r = st.number_input("Recebido:", min_value=total_v)
+                if st.button("CONFIRMAR DINHEIRO"):
+                    st.success(f"Troco: R$ {v_r - total_v:.2f}")
+                    metodo = "Dinheiro"; st.session_state.show_dinheiro = False
+
+            if st.session_state.show_vip:
+                n_v = st.text_input("Nome do Cliente:")
+                if st.button("LANÇAR VIP"):
+                    if n_v: 
+                        metodo = f"VIP - {n_v}"
+                        st.session_state.contas_vip[n_v] = st.session_state.contas_vip.get(n_v, 0.0) + total_v
+                        st.session_state.show_vip = False
+                    else: st.error("Insira o nome")
+
+            if metodo:
+                v_id = int(datetime.now().timestamp())
+                for sab, info in st.session_state.carrinho.items():
+                    for _ in range(info['qtd']):
+                        st.session_state.vendas.append({"id": v_id, "sabor": sab, "valor": info['preco'], "tipo": metodo, "hora": datetime.now().strftime("%H:%M")})
+                        st.session_state.fichas_pendentes.append(gerar_ficha_imagem(sab, v_id, metodo))
+                st.session_state.carrinho = {}
+                salvar_dados()
+                st.rerun()
+
+    if st.session_state.fichas_pendentes:
+        st.divider()
+        if st.button("🔥 IMPRIMIR FICHAS", type="primary", use_container_width=True):
+            for f in st.session_state.fichas_pendentes: st.image(f)
+            st.session_state.fichas_pendentes = []
+
+# --- 6. ESTORNO (ETAPA 4) ---
+with t2:
+    st.subheader("Estorno de Venda")
+    busca_id = st.text_input("ID da Venda (últimos 5 dígitos):")
+    if st.session_state.vendas:
+        df_est = pd.DataFrame(st.session_state.vendas)
+        if busca_id:
+            df_filtrado = df_est[df_est['id'].astype(str).str.contains(busca_id)]
+            for i, r in df_filtrado.iterrows():
+                if st.button(f"Anular {r['sabor']} - R$ {r['valor']} (ID: {r['id']})", key=f"e_{i}"):
+                    st.session_state.vendas.remove(r.to_dict())
+                    salvar_dados(); st.rerun()
+
+# --- 7. FECHAMENTO (ETAPA 5) ---
+with t3:
+    if st.session_state.vendas:
+        df_f = pd.DataFrame(st.session_state.vendas)
+        st.subheader("Relatórios")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Faturamento Total", f"R$ {df_f['valor'].sum():.2f}")
+        c2.metric("Qtd de Itens", len(df_f))
+        c3.metric("Gaveta (Dinheiro + Troco)", f"R$ {df_f[df_f['tipo']=='Dinheiro']['valor'].sum() + st.session_state.caixa_inicial:.2f}")
+        
+        st.divider()
+        st.write("Vendas por Sabor")
+        st.bar_chart(df_f['sabor'].value_counts())
+        
+        if st.button("Zerar Tudo (Novo Evento)"):
+            if os.path.exists("vendas_backup.csv"): os.remove("vendas_backup.csv")
+            if os.path.exists("vips_backup.csv"): os.remove("vips_backup.csv")
+            st.session_state.clear()
+            st.rerun()
+    else:
+        st.write("Nenhuma venda registrada.")
