@@ -107,27 +107,31 @@ if st.session_state.configurado == False:
         selec_base = st.multiselect("Sabores Fixos:", opcoes_base, default=default_base)
     
     with col_cfg2:
+        # Pega itens extras atuais
         extras_atuais_lista = [s for s in st.session_state.cardapio.keys() if s not in opcoes_base]
         extras_atuais_str = ", ".join(extras_atuais_lista)
+        # O campo de texto agora dispara a atualização da lista
         novos_extras = st.text_area("Adicionar Outros (Separe por vírgula):", 
                                    value=extras_atuais_str,
                                    placeholder="Ex: Água, Refrigerante, Suco")
 
+    # Processamento rigoroso da lista de itens
     lista_extras = [s.strip() for s in novos_extras.split(",") if s.strip()]
-    lista_final = selec_base + lista_extras
+    lista_total_config = selec_base + lista_extras
     
     st.write("---")
     st.subheader("Defina os Preços:")
     temp_card = {}
     
-    if lista_final:
+    if lista_total_config:
         cols_p = st.columns(3)
-        for i, s in enumerate(lista_final):
+        for i, s in enumerate(lista_total_config):
+            # Usamos uma chave única baseada no nome do item para evitar conflitos de cache
             p_sugestao = st.session_state.cardapio.get(s, 0.0)
-            temp_card[s] = cols_p[i%3].number_input(f"R$ {s}:", min_value=0.0, format="%.2f", key=f"p_{s}", value=p_sugestao)
+            temp_card[s] = cols_p[i%3].number_input(f"Preço {s}:", min_value=0.0, format="%.2f", key=f"cfg_p_{s}", value=p_sugestao)
     
     if st.button("SALVAR E ABRIR VENDAS", type="primary", use_container_width=True):
-        if lista_final:
+        if lista_total_config:
             st.session_state.caixa_inicial = v_ini
             st.session_state.cardapio = temp_card
             st.session_state.configurado = True
@@ -144,8 +148,9 @@ with t1:
     cv, cc = st.columns([1.5, 1])
     with cv:
         cols = st.columns(2)
+        # Ordenamos o cardápio para manter a interface estável
         for i, (n, p) in enumerate(st.session_state.cardapio.items()):
-            if cols[i%2].button(f"{n}\nR$ {p:.2f}", key=f"v_{n}", use_container_width=True):
+            if cols[i%2].button(f"{n}\nR$ {p:.2f}", key=f"btn_venda_{n}", use_container_width=True):
                 if n in st.session_state.carrinho: st.session_state.carrinho[n]['qtd'] += 1
                 else: st.session_state.carrinho[n] = {'preco': p, 'qtd': 1}
                 st.rerun()
@@ -156,7 +161,7 @@ with t1:
             for n, it in list(st.session_state.carrinho.items()):
                 c_i, c_d = st.columns([4, 1])
                 c_i.write(f"**{it['qtd']}x {n}**")
-                if c_d.button("🗑️", key=f"del_{n}"): del st.session_state.carrinho[n]; st.rerun()
+                if c_d.button("🗑️", key=f"del_cart_{n}"): del st.session_state.carrinho[n]; st.rerun()
             st.markdown(f"## Total: R$ {total_venda:.2f}")
             
             m_final = None; v_cobrado = total_venda
@@ -171,19 +176,20 @@ with t1:
             if c_ex[1].button("🏷️ DESCONTO", use_container_width=True): st.session_state.show_desconto = True
 
             if st.session_state.show_dinheiro:
-                rec = st.number_input("Recebido:", min_value=0.0, key="rec_dinheiro")
+                rec = st.number_input("Recebido:", min_value=0.0, key="rec_dinheiro_val")
                 if rec >= total_venda:
                     st.success(f"Troco: R$ {rec-total_venda:.2f}")
                     if st.button("CONFIRMAR DINHEIRO"): m_final = "Dinheiro"; st.session_state.show_dinheiro = False
             
             if st.session_state.show_desconto:
-                v_cobrado = st.number_input("VALOR FINAL:", min_value=0.0, value=total_venda)
-                f_desc = st.selectbox("Forma:", ["Dinheiro", "PIX", "Débito", "Crédito"])
-                if st.button("APLICAR"): m_final = f_desc; st.session_state.show_desconto = False
+                v_cobrado = st.number_input("VALOR COM DESCONTO:", min_value=0.0, value=total_venda, key="desc_val")
+                f_desc = st.selectbox("Forma de Pagamento:", ["Dinheiro", "PIX", "Débito", "Crédito"], key="desc_tipo")
+                if st.button("APLICAR DESCONTO"): m_final = f_desc; st.session_state.show_desconto = False
 
             if m_final:
                 v_id = int(datetime.now().timestamp())
                 qtd_t = sum(it['qtd'] for it in st.session_state.carrinho.values())
+                # Rateio do valor cobrado entre as fichas geradas
                 v_item = (v_cobrado / qtd_t) if (m_final != "Cortesia" and qtd_t > 0) else 0.0
                 for n, it in st.session_state.carrinho.items():
                     for _ in range(it['qtd']):
@@ -192,22 +198,21 @@ with t1:
                 st.session_state.carrinho = {}; st.rerun()
         
         if st.session_state.fichas_pendentes:
-            if st.button("🔥 IMPRIMIR TUDO", type="primary", use_container_width=True):
+            if st.button("🔥 IMPRIMIR FICHAS", type="primary", use_container_width=True):
                 for f in st.session_state.fichas_pendentes: st.image(f)
                 st.session_state.fichas_pendentes = []
 
 with t2:
-    if not st.session_state.vendas: st.info("Sem vendas.")
+    if not st.session_state.vendas: st.info("Nenhuma venda para estornar.")
     else:
         df_v = pd.DataFrame(st.session_state.vendas)
-        v_sel = st.selectbox("ID Venda:", df_v['id_venda'].unique(), format_func=lambda x: f"Venda {str(x)[-5:]}")
+        v_sel = st.selectbox("Selecione Venda por ID:", df_v['id_venda'].unique(), format_func=lambda x: f"Venda {str(x)[-5:]}")
         itens_v = [v for v in st.session_state.vendas if v['id_venda'] == v_sel]
         for idx, item in enumerate(itens_v):
             col_est1, col_est2 = st.columns([3, 1])
-            col_est1.write(f"{item['Sabor']} - R$ {item['Valor']:.2f}")
-            if col_est2.button("Estornar", key=f"est_btn_{v_sel}_{idx}"):
+            col_est1.write(f"Item: {item['Sabor']} | R$ {item['Valor']:.2f} ({item['Tipo']})")
+            if col_est2.button("Estornar Item", key=f"btn_est_{v_sel}_{idx}"):
                 st.session_state.vendas.remove(item)
-                st.success("Item removido!")
                 st.rerun()
 
 with t3:
@@ -215,24 +220,27 @@ with t3:
     def sm(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
     total_sang = sum(s['valor'] for s in st.session_state.sangrias)
     
+    st.subheader("Resumo Financeiro")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("PIX", f"R$ {sm('PIX'):.2f}")
-    c2.metric("CARTÃO", f"R$ {sm('Débito')+sm('Crédito'):.2f}")
-    c3.metric("GAVETA", f"R$ {(st.session_state.caixa_inicial + sm('Dinheiro')) - total_sang:.2f}")
-    c4.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
+    c1.metric("Faturamento PIX", f"R$ {sm('PIX'):.2f}")
+    c2.metric("Cartão (D/C)", f"R$ {sm('Débito')+sm('Crédito'):.2f}")
+    c3.metric("Saldo Gaveta", f"R$ {(st.session_state.caixa_inicial + sm('Dinheiro')) - total_sang:.2f}")
+    c4.metric("Qtd Cortesia", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
 
     st.divider()
     cs1, cs2 = st.columns(2)
     with cs1:
-        st.write("#### 💸 Sangria")
-        v_s = st.number_input("Valor Sangria:", min_value=0.0, key="val_sangria")
-        m_s = st.text_input("Motivo:", key="mot_sangria")
-        if st.button("REGISTRAR SANGRIA"):
-            st.session_state.sangrias.append({"valor": v_s, "motivo": m_s})
-            st.success("Sangria registrada!")
+        st.write("#### 💸 Registro de Sangria")
+        v_s = st.number_input("Valor da Sangria:", min_value=0.0, key="val_sang_input")
+        m_s = st.text_input("Motivo da Sangria:", key="mot_sang_input")
+        if st.button("CONFIRMAR SANGRIA"):
+            st.session_state.sangrias.append({"valor": v_s, "motivo": m_s, "hora": datetime.now().strftime("%H:%M")})
             st.rerun()
     with cs2:
-        if st.button("EDITAR CARDÁPIO", use_container_width=True): st.session_state.configurado = False; st.rerun()
-        if st.button("ZERAR TUDO", type="secondary", use_container_width=True):
+        st.write("#### ⚙️ Outras Opções")
+        if st.button("ALTERAR CARDÁPIO", use_container_width=True): 
+            st.session_state.configurado = False
+            st.rerun()
+        if st.button("LIMPAR TODOS OS DADOS", type="secondary", use_container_width=True):
             for k in list(st.session_state.keys()): del st.session_state[k]
             st.rerun()
