@@ -95,5 +95,86 @@ if 'show_desconto' not in st.session_state: st.session_state.show_desconto = Fal
 
 st.markdown("""<style>div.stButton > button { height: 5em; font-size: 16px; font-weight: bold; border-radius: 10px; }</style>""", unsafe_allow_html=True)
 
-# --- TELA DE CONFIGURAÇÃO (CORRIGIDA) ---
-if not st
+# --- TELA DE CONFIGURAÇÃO ---
+if st.session_state.configurado == False:
+    st.title("⚙️ Gestão de Cardápio Seven Dwarfs")
+    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial)
+    
+    col_cfg1, col_cfg2 = st.columns(2)
+    with col_cfg1:
+        opcoes_base = ["Pilsen", "IPA", "Black Jack", "Vinho", "Manga", "Morango"]
+        default_base = [s for s in st.session_state.cardapio.keys() if s in opcoes_base]
+        selec_base = st.multiselect("Sabores Fixos:", opcoes_base, default=default_base)
+    
+    with col_cfg2:
+        extras_atuais_lista = [s for s in st.session_state.cardapio.keys() if s not in opcoes_base]
+        extras_atuais_str = ", ".join(extras_atuais_lista)
+        novos_extras = st.text_area("Adicionar Outros (Separe por vírgula):", 
+                                   value=extras_atuais_str,
+                                   placeholder="Ex: Água, Refrigerante, Suco")
+
+    lista_extras = [s.strip() for s in novos_extras.split(",") if s.strip()]
+    lista_final = selec_base + lista_extras
+    
+    st.write("---")
+    st.subheader("Defina os Preços:")
+    temp_card = {}
+    
+    if lista_final:
+        cols_p = st.columns(3)
+        for i, s in enumerate(lista_final):
+            p_sugestao = st.session_state.cardapio.get(s, 0.0)
+            temp_card[s] = cols_p[i%3].number_input(f"R$ {s}:", min_value=0.0, format="%.2f", key=f"p_{s}", value=p_sugestao)
+    
+    if st.button("SALVAR E ABRIR VENDAS", type="primary", use_container_width=True):
+        if lista_final:
+            st.session_state.caixa_inicial = v_ini
+            st.session_state.cardapio = temp_card
+            st.session_state.configurado = True
+            st.rerun()
+        else:
+            st.error("Selecione pelo menos um item.")
+    st.stop()
+
+# --- INTERFACE PDV ---
+st.markdown("### 🍻 PDV Seven Dwarfs")
+t1, t2, t3 = st.tabs(["🛒 VENDER", "🔄 ESTORNO", "📊 FECHAMENTO"])
+
+with t1:
+    cv, cc = st.columns([1.5, 1])
+    with cv:
+        cols = st.columns(2)
+        for i, (n, p) in enumerate(st.session_state.cardapio.items()):
+            if cols[i%2].button(f"{n}\nR$ {p:.2f}", key=f"v_{n}", use_container_width=True):
+                if n in st.session_state.carrinho: st.session_state.carrinho[n]['qtd'] += 1
+                else: st.session_state.carrinho[n] = {'preco': p, 'qtd': 1}
+                st.rerun()
+    with cc:
+        total_venda = sum(it['preco'] * it['qtd'] for it in st.session_state.carrinho.values())
+        if not st.session_state.carrinho: st.info("Carrinho Vazio")
+        else:
+            for n, it in list(st.session_state.carrinho.items()):
+                c_i, c_d = st.columns([4, 1])
+                c_i.write(f"**{it['qtd']}x {n}**")
+                if c_d.button("🗑️", key=f"del_{n}"): del st.session_state.carrinho[n]; st.rerun()
+            st.markdown(f"## Total: R$ {total_venda:.2f}")
+            
+            m_final = None; v_cobrado = total_venda
+            c_pg = st.columns(2)
+            if c_pg[0].button("PIX", use_container_width=True): m_final = "PIX"
+            if c_pg[1].button("DÉBITO", use_container_width=True): m_final = "Débito"
+            if c_pg[0].button("CRÉDITO", use_container_width=True): m_final = "Crédito"
+            if c_pg[1].button("DINHEIRO", use_container_width=True): st.session_state.show_dinheiro = True
+            
+            c_ex = st.columns(2)
+            if c_ex[0].button("🎁 CORTESIA", use_container_width=True): m_final = "Cortesia"
+            if c_ex[1].button("🏷️ DESCONTO", use_container_width=True): st.session_state.show_desconto = True
+
+            if st.session_state.show_dinheiro:
+                rec = st.number_input("Recebido:", min_value=0.0, key="rec_dinheiro")
+                if rec >= total_venda:
+                    st.success(f"Troco: R$ {rec-total_venda:.2f}")
+                    if st.button("CONFIRMAR DINHEIRO"): m_final = "Dinheiro"; st.session_state.show_dinheiro = False
+            
+            if st.session_state.show_desconto:
+                v_cobrado =
