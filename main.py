@@ -124,7 +124,4 @@ if st.session_state.configurado == False:
     temp_card = {}
     
     if lista_total_config:
-        cols_p = st.columns(3)
-        for i, s in enumerate(lista_total_config):
-            p_sugestao = st.session_state.cardapio.get(s, 0.0)
-            temp_card[s] = cols
+        cols
