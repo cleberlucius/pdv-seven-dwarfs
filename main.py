@@ -8,7 +8,7 @@ import textwrap
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Seven Dwarfs - PDV", layout="wide")
 
-# --- 1. INICIALIZAÇÃO DE ESTADOS (Sempre no topo) ---
+# --- 1. INICIALIZAÇÃO DE ESTADOS ---
 if 'vendas' not in st.session_state: st.session_state.vendas = []
 if 'sangrias' not in st.session_state: st.session_state.sangrias = []
 if 'fichas_pendentes' not in st.session_state: st.session_state.fichas_pendentes = []
@@ -78,4 +78,41 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     mensagens = [
         f"Emitido em: {data_str}",
         "Válido apenas na data de emissão durante o evento",
-        "Seven Dwarfs a verdadeira delícia gelada
+        "Seven Dwarfs a verdadeira delícia gelada",
+        "BEBA COM MODERAÇÃO"
+    ]
+
+    for msg in mensagens:
+        linhas = textwrap.wrap(msg.upper(), width=32)
+        for linha in linhas:
+            draw.text((largura/2, y), linha, fill=(0,0,0), font=f_rodape, anchor="mm")
+            y += 20
+        y += 4 
+
+    draw.text((largura/2, y), "--------------------------------", fill=(0,0,0), font=f_rodape, anchor="mm")
+    y += 20
+    return img.crop((0, 0, largura, y + 10))
+
+st.markdown("""<style>div.stButton > button { height: 5em; font-size: 16px; font-weight: bold; border-radius: 10px; }</style>""", unsafe_allow_html=True)
+
+# --- TELA DE CONFIGURAÇÃO ---
+if st.session_state.configurado == False:
+    st.title("⚙️ Gestão de Cardápio Seven Dwarfs")
+    v_ini = st.number_input("Troco Inicial (R$):", min_value=0.0, format="%.2f", value=st.session_state.caixa_inicial)
+    
+    col_cfg1, col_cfg2 = st.columns(2)
+    with col_cfg1:
+        opcoes_base = ["Pilsen", "IPA", "Black Jack", "Vinho", "Manga", "Morango"]
+        default_base = [s for s in st.session_state.cardapio.keys() if s in opcoes_base]
+        selec_base = st.multiselect("Sabores Fixos:", opcoes_base, default=default_base)
+    
+    with col_cfg2:
+        extras_atuais_lista = [s for s in st.session_state.cardapio.keys() if s not in opcoes_base]
+        extras_atuais_str = ", ".join(extras_atuais_lista)
+        novos_extras = st.text_area("Adicionar Outros (Separe por vírgula):", 
+                                   value=extras_atuais_str,
+                                   placeholder="Ex: Água, Refrigerante, Suco")
+
+    lista_extras = [s.strip() for s in novos_extras.split(",") if s.strip()]
+    lista_total_config = []
+    for item in (selec_base + lista
