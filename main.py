@@ -115,4 +115,16 @@ if st.session_state.configurado == False:
 
     lista_extras = [s.strip() for s in novos_extras.split(",") if s.strip()]
     lista_total_config = []
-    for item in (selec_base + lista
+    for item in (selec_base + lista_extras):
+        if item not in lista_total_config:
+            lista_total_config.append(item)
+    
+    st.write("---")
+    st.subheader("Defina os Preços:")
+    temp_card = {}
+    
+    if lista_total_config:
+        cols_p = st.columns(3)
+        for i, s in enumerate(lista_total_config):
+            p_sugestao = st.session_state.cardapio.get(s, 0.0)
+            temp_card[s] = cols
