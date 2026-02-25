@@ -83,12 +83,12 @@ def gerar_ficha_imagem(sabor, id_venda, pagto):
     return img.crop((0, 0, largura, y + 10))
 
 # --- INICIALIZAÇÃO DE ESTADOS ---
-if 'vendas' not in st.session_state: st.session_state.vendas = []
-if 'sangrias' not in st.session_state: st.session_state.sangrias = []
+for key in ['vendas', 'sangrias', 'fichas_pendentes']:
+    if key not in st.session_state: st.session_state[key] = []
+
 if 'cardapio' not in st.session_state: st.session_state.cardapio = {}
 if 'caixa_inicial' not in st.session_state: st.session_state.caixa_inicial = 0.0
 if 'configurado' not in st.session_state: st.session_state.configurado = False
-if 'fichas_pendentes' not in st.session_state: st.session_state.fichas_pendentes = []
 if 'carrinho' not in st.session_state: st.session_state.carrinho = {}
 if 'show_dinheiro' not in st.session_state: st.session_state.show_dinheiro = False
 if 'show_desconto' not in st.session_state: st.session_state.show_desconto = False
@@ -177,4 +177,62 @@ with t1:
                     if st.button("CONFIRMAR DINHEIRO"): m_final = "Dinheiro"; st.session_state.show_dinheiro = False
             
             if st.session_state.show_desconto:
-                v_cobrado =
+                v_cobrado = st.number_input("VALOR FINAL:", min_value=0.0, value=total_venda)
+                f_desc = st.selectbox("Forma:", ["Dinheiro", "PIX", "Débito", "Crédito"])
+                if st.button("APLICAR"): m_final = f_desc; st.session_state.show_desconto = False
+
+            if m_final:
+                v_id = int(datetime.now().timestamp())
+                qtd_t = sum(it['qtd'] for it in st.session_state.carrinho.values())
+                v_item = (v_cobrado / qtd_t) if (m_final != "Cortesia" and qtd_t > 0) else 0.0
+                for n, it in st.session_state.carrinho.items():
+                    for _ in range(it['qtd']):
+                        st.session_state.vendas.append({"id_venda": v_id, "Sabor": n, "Valor": v_item, "Tipo": m_final, "Hora": datetime.now().strftime("%H:%M")})
+                        st.session_state.fichas_pendentes.append(gerar_ficha_imagem(n, v_id, m_final))
+                st.session_state.carrinho = {}; st.rerun()
+        
+        if st.session_state.fichas_pendentes:
+            if st.button("🔥 IMPRIMIR TUDO", type="primary", use_container_width=True):
+                for f in st.session_state.fichas_pendentes: st.image(f)
+                st.session_state.fichas_pendentes = []
+
+with t2:
+    if not st.session_state.vendas: st.info("Sem vendas.")
+    else:
+        df_v = pd.DataFrame(st.session_state.vendas)
+        v_sel = st.selectbox("ID Venda:", df_v['id_venda'].unique(), format_func=lambda x: f"Venda {str(x)[-5:]}")
+        itens_v = [v for v in st.session_state.vendas if v['id_venda'] == v_sel]
+        for idx, item in enumerate(itens_v):
+            col_est1, col_est2 = st.columns([3, 1])
+            col_est1.write(f"{item['Sabor']} - R$ {item['Valor']:.2f}")
+            if col_est2.button("Estornar", key=f"est_btn_{v_sel}_{idx}"):
+                st.session_state.vendas.remove(item)
+                st.success("Item removido!")
+                st.rerun()
+
+with t3:
+    df_f = pd.DataFrame(st.session_state.vendas) if st.session_state.vendas else pd.DataFrame(columns=['Tipo', 'Valor'])
+    def sm(t): return df_f[df_f['Tipo'] == t]['Valor'].sum()
+    total_sang = sum(s['valor'] for s in st.session_state.sangrias)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("PIX", f"R$ {sm('PIX'):.2f}")
+    c2.metric("CARTÃO", f"R$ {sm('Débito')+sm('Crédito'):.2f}")
+    c3.metric("GAVETA", f"R$ {(st.session_state.caixa_inicial + sm('Dinheiro')) - total_sang:.2f}")
+    c4.metric("CORTESIAS", f"{len(df_f[df_f['Tipo']=='Cortesia'])} un")
+
+    st.divider()
+    cs1, cs2 = st.columns(2)
+    with cs1:
+        st.write("#### 💸 Sangria")
+        v_s = st.number_input("Valor Sangria:", min_value=0.0, key="val_sangria")
+        m_s = st.text_input("Motivo:", key="mot_sangria")
+        if st.button("REGISTRAR SANGRIA"):
+            st.session_state.sangrias.append({"valor": v_s, "motivo": m_s})
+            st.success("Sangria registrada!")
+            st.rerun()
+    with cs2:
+        if st.button("EDITAR CARDÁPIO", use_container_width=True): st.session_state.configurado = False; st.rerun()
+        if st.button("ZERAR TUDO", type="secondary", use_container_width=True):
+            for k in list(st.session_state.keys()): del st.session_state[k]
+            st.rerun()
